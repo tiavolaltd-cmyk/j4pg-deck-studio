@@ -1,0 +1,800 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>J4PG Deck Studio</title>
+<style>
+  :root {
+    --navy:  #0B0F1A;
+    --navy2: #131929;
+    --navy3: #1C2438;
+    --gold:  #C8A84B;
+    --gold2: #E5C06A;
+    --green: #10B981;
+    --red:   #EF4444;
+    --text:  #E5E7EB;
+    --muted: #6B7280;
+    --border:#2A3350;
+    --input: #1A2235;
+    --radius:8px;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--navy); color:var(--text); font-family:'Inter', system-ui, sans-serif; min-height:100vh; }
+
+  /* ── Header ── */
+  header {
+    background:var(--navy2);
+    border-bottom:1px solid var(--border);
+    padding:18px 32px;
+    display:flex; align-items:center; gap:16px;
+  }
+  .logo { font-size:22px; font-weight:800; color:var(--gold); letter-spacing:.04em; }
+  .logo span { color:var(--text); font-weight:400; }
+  .badge { background:var(--navy3); border:1px solid var(--gold); color:var(--gold); font-size:11px;
+           font-weight:600; padding:3px 10px; border-radius:20px; margin-left:auto; }
+
+  /* ── Layout ── */
+  .container { max-width:900px; margin:0 auto; padding:32px 24px; }
+
+  /* ── Section ── */
+  .section {
+    background:var(--navy2);
+    border:1px solid var(--border);
+    border-radius:12px;
+    margin-bottom:20px;
+    overflow:hidden;
+  }
+  .section-head {
+    background:var(--navy3);
+    padding:14px 20px;
+    display:flex; align-items:center; gap:10px;
+    cursor:pointer; user-select:none;
+  }
+  .section-head .num {
+    background:var(--gold); color:var(--navy); font-weight:800;
+    width:24px; height:24px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center;
+    font-size:12px; flex-shrink:0;
+  }
+  .section-head h2 { font-size:14px; font-weight:700; flex:1; }
+  .section-head .chevron { transition:.2s; font-size:12px; color:var(--muted); }
+  .section-body { padding:20px; }
+  .section.collapsed .section-body { display:none; }
+  .section.collapsed .chevron { transform:rotate(-90deg); }
+
+  /* ── Grid ── */
+  .grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .grid-3 { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
+  .grid-4 { display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:12px; }
+  @media(max-width:600px) { .grid-2,.grid-3,.grid-4 { grid-template-columns:1fr; } }
+
+  /* ── Form elements ── */
+  .field { display:flex; flex-direction:column; gap:5px; }
+  label { font-size:12px; color:var(--muted); font-weight:500; }
+  input[type=text], input[type=number], select, textarea {
+    background:var(--input); border:1px solid var(--border);
+    color:var(--text); border-radius:var(--radius);
+    padding:9px 12px; font-size:13px; width:100%;
+    transition:.15s;
+  }
+  input:focus, select:focus, textarea:focus {
+    outline:none; border-color:var(--gold);
+    box-shadow:0 0 0 2px rgba(200,168,75,.15);
+  }
+  textarea { resize:vertical; min-height:60px; }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border:2px dashed var(--border); border-radius:var(--radius);
+    padding:18px; text-align:center; cursor:pointer;
+    transition:.15s; position:relative;
+  }
+  .upload-zone:hover { border-color:var(--gold); background:rgba(200,168,75,.04); }
+  .upload-zone input { position:absolute; inset:0; opacity:0; cursor:pointer; }
+  .upload-zone .ico { font-size:24px; margin-bottom:6px; }
+  .upload-zone .lbl { font-size:12px; color:var(--muted); }
+  .upload-zone .fname { font-size:12px; color:var(--gold); margin-top:6px; font-weight:600; }
+
+  /* ── KPI row ── */
+  .kpi-row {
+    display:grid; gap:8px;
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    align-items:center; margin-bottom:8px;
+  }
+  .kpi-row .row-num { font-size:12px; color:var(--muted); text-align:center; }
+  .kpi-label { font-size:11px; color:var(--muted); margin-bottom:4px; }
+
+  /* ── Divider ── */
+  .divider { border:none; border-top:1px solid var(--border); margin:16px 0; }
+  .sub-title { font-size:12px; font-weight:700; color:var(--gold); text-transform:uppercase;
+               letter-spacing:.06em; margin-bottom:12px; margin-top:4px; }
+
+  /* ── Bar preview ── */
+  .bar-preview { height:4px; background:var(--border); border-radius:2px; margin-top:4px; }
+  .bar-fill { height:100%; background:var(--gold); border-radius:2px; transition:.3s; }
+
+  /* ── Force/Axe block ── */
+  .fa-block {
+    background:var(--navy3); border-radius:var(--radius);
+    padding:14px; border-left:3px solid var(--green);
+    margin-bottom:10px;
+  }
+  .fa-block.axe { border-left-color:var(--red); }
+  .fa-block-head { font-size:12px; font-weight:700; color:var(--text); margin-bottom:10px; }
+
+  /* ── Submit ── */
+  .submit-area { text-align:center; padding:8px 0 4px; }
+  .btn-generate {
+    background:var(--gold); color:var(--navy);
+    border:none; border-radius:var(--radius);
+    padding:14px 40px; font-size:15px; font-weight:800;
+    cursor:pointer; letter-spacing:.03em;
+    transition:.15s; display:inline-flex; align-items:center; gap:10px;
+  }
+  .btn-generate:hover { background:var(--gold2); transform:translateY(-1px); }
+  .btn-generate:active { transform:translateY(0); }
+  .btn-generate:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+
+  /* ── Spinner ── */
+  .spinner { width:18px; height:18px; border:2px solid var(--navy); border-top-color:transparent;
+             border-radius:50%; animation:spin .7s linear infinite; display:none; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  /* ── Toast ── */
+  #toast {
+    position:fixed; bottom:24px; right:24px;
+    background:var(--green); color:#fff;
+    padding:12px 20px; border-radius:var(--radius);
+    font-size:13px; font-weight:600;
+    transform:translateY(80px); opacity:0; transition:.3s;
+    z-index:999;
+  }
+  #toast.show { transform:translateY(0); opacity:1; }
+  #toast.error { background:var(--red); }
+
+  .help { font-size:11px; color:var(--muted); margin-top:4px; }
+  .col-header { font-size:11px; color:var(--muted); font-weight:600; text-align:center; margin-bottom:4px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">J4PG <span>Deck Studio</span></div>
+  <div class="badge">v2.0 — Template Engine</div>
+</header>
+
+<div class="container">
+<form id="deckForm">
+
+<!-- ── 0. Format ── -->
+<div class="section" id="sec0">
+  <div class="section-head" onclick="toggle('sec0')">
+    <div class="num">⚙</div>
+    <h2>Format du deck</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2">
+      <div class="field">
+        <label>Type de deck</label>
+        <select name="deck_format">
+          <option value="top20">TOP 20 — Hebdomadaire / Zoom joueur (10 slides)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Source des données</label>
+        <input type="text" name="SOURCE" value="SportsBase" placeholder="SportsBase">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 1. Identité joueur ── -->
+<div class="section" id="sec1">
+  <div class="section-head" onclick="toggle('sec1')">
+    <div class="num">1</div>
+    <h2>Identité joueur — Slide 1 (Couverture)</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="field">
+        <label>Prénom (MAJUSCULES)</label>
+        <input type="text" name="PRENOM_UPPER" placeholder="NATHAN" required>
+      </div>
+      <div class="field">
+        <label>Nom (MAJUSCULES)</label>
+        <input type="text" name="NOM_UPPER" placeholder="BITUMAZALA" required>
+      </div>
+    </div>
+    <div class="grid-4" style="margin-bottom:12px">
+      <div class="field">
+        <label>Poste</label>
+        <select name="POSTE">
+          <option>Milieu Offensif / Ailier</option>
+          <option>Défenseur Central</option>
+          <option>Latéral / Piston</option>
+          <option>Milieu Déf. / Relayeur</option>
+          <option>Attaquant</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Âge</label>
+        <input type="number" name="AGE" placeholder="22" min="15" max="45">
+      </div>
+      <div class="field">
+        <label>Taille (cm)</label>
+        <input type="number" name="TAILLE" placeholder="178" min="150" max="210">
+      </div>
+      <div class="field">
+        <label>Pied</label>
+        <select name="PIED">
+          <option>Droit</option>
+          <option>Gauche</option>
+          <option>Les deux</option>
+        </select>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-bottom:16px">
+      <div class="field">
+        <label>Club</label>
+        <input type="text" name="CLUB" placeholder="AS Nancy-Lorraine">
+      </div>
+      <div class="field">
+        <label>Compétition</label>
+        <input type="text" name="COMPETITION" placeholder="Ligue 2">
+      </div>
+      <div class="field">
+        <label>Type de deck</label>
+        <input type="text" name="DECK_TYPE" value="ZOOM JOUEUR — TOP 20">
+      </div>
+    </div>
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="field">
+        <label>Saison</label>
+        <input type="text" name="SAISON" value="2024-25">
+      </div>
+      <div class="field">
+        <label>Fenêtre / Journées</label>
+        <input type="text" name="FENETRE" placeholder="J1-J26">
+      </div>
+    </div>
+    <div class="field">
+      <label>Photo joueur</label>
+      <div class="upload-zone" id="zone_photo">
+        <input type="file" name="photo_player" accept="image/*" onchange="showFile(this,'zone_photo')">
+        <div class="ico">🖼</div>
+        <div class="lbl">Cliquer ou glisser — PNG/JPG recommandé</div>
+        <div class="fname" id="fname_photo"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 2. Profil ── -->
+<div class="section collapsed" id="sec2">
+  <div class="section-head" onclick="toggle('sec2')">
+    <div class="num">2</div>
+    <h2>Profil & Point de départ — Slide 2</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-4" style="margin-bottom:12px">
+      <div class="field">
+        <label>Ligue</label>
+        <input type="text" name="LIGUE" placeholder="Ligue 2">
+      </div>
+      <div class="field">
+        <label>Minutes jouées</label>
+        <input type="text" name="MINUTES" placeholder="1 847">
+      </div>
+      <div class="field">
+        <label>Matchs</label>
+        <input type="text" name="MATCHS" placeholder="22">
+      </div>
+    </div>
+    <div class="sub-title">9 KPI — Profil</div>
+    <div style="display:grid;grid-template-columns:1fr 60px 80px;gap:4px 8px;margin-bottom:4px">
+      <div class="col-header">Label KPI</div>
+      <div class="col-header">Valeur</div>
+      <div class="col-header">Percentile</div>
+    </div>
+    <div id="s2_kpis"></div>
+  </div>
+</div>
+
+<!-- ── 3. Standard Cible ── -->
+<div class="section collapsed" id="sec3">
+  <div class="section-head" onclick="toggle('sec3')">
+    <div class="num">3</div>
+    <h2>Standard Cible (barres) — Slide 3</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="field">
+        <label>Titre slide</label>
+        <input type="text" name="S3_TITLE" value="STANDARD CIBLE">
+      </div>
+      <div class="field">
+        <label>Sous-titre</label>
+        <input type="text" name="S3_SUBTITLE" placeholder="Milieu Offensif · Ligue 2 · Top 25%">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 80px 80px 80px;gap:4px 8px;margin-bottom:4px">
+      <div class="col-header">Label KPI</div>
+      <div class="col-header">Valeur</div>
+      <div class="col-header">Cible</div>
+      <div class="col-header">Écart</div>
+    </div>
+    <div id="s3_kpis"></div>
+    <p class="help">Les barres sont calculées automatiquement (Valeur / Cible).</p>
+  </div>
+</div>
+
+<!-- ── 4. Analyse individuelle ── -->
+<div class="section collapsed" id="sec4">
+  <div class="section-head" onclick="toggle('sec4')">
+    <div class="num">4</div>
+    <h2>Analyse Individuelle (forces & axes) — Slide 4</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="field">
+        <label>Titre slide</label>
+        <input type="text" name="S4_TITLE" value="ANALYSE INDIVIDUELLE">
+      </div>
+      <div class="field">
+        <label>Sous-titre</label>
+        <input type="text" name="S4_SUBTITLE" value="Forces &amp; Axes d'amélioration">
+      </div>
+    </div>
+
+    <div class="sub-title" style="color:var(--green)">✦ Forces (3)</div>
+    <div id="s4_forces"></div>
+
+    <hr class="divider">
+
+    <div class="sub-title" style="color:var(--red)">▼ Axes d'amélioration (3)</div>
+    <div id="s4_axes"></div>
+  </div>
+</div>
+
+<!-- ── 5. Benchmark Ligue ── -->
+<div class="section collapsed" id="sec5">
+  <div class="section-head" onclick="toggle('sec5')">
+    <div class="num">5</div>
+    <h2>Benchmark Ligue (radar) — Slide 5</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-3" style="margin-bottom:12px">
+      <div class="field">
+        <label>Titre</label>
+        <input type="text" name="S5_TITLE" value="BENCHMARK LIGUE">
+      </div>
+      <div class="field">
+        <label>Sous-titre</label>
+        <input type="text" name="S5_SUBTITLE" placeholder="Milieu Offensif · Ligue 2">
+      </div>
+      <div class="field">
+        <label>Sous-titre radar</label>
+        <input type="text" name="S5_RADAR_SUBTITLE" placeholder="Nathan vs. Top 25% Ligue 2">
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:2fr 80px 80px 80px;gap:4px 8px;margin-bottom:4px">
+      <div class="col-header">Label KPI</div>
+      <div class="col-header">Joueur (N:)</div>
+      <div class="col-header">Ligue (L:)</div>
+      <div class="col-header">Percentile</div>
+    </div>
+    <div id="s5_kpis"></div>
+    <div class="field" style="margin-top:12px">
+      <label>Image radar (depuis SportsBase)</label>
+      <div class="upload-zone" id="zone_radar5">
+        <input type="file" name="img_radar_s5" accept="image/*" onchange="showFile(this,'zone_radar5')">
+        <div class="ico">📊</div>
+        <div class="lbl">Graphique radar exporté — PNG/JPG</div>
+        <div class="fname" id="fname_radar5"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 6. Heatmap ── -->
+<div class="section collapsed" id="sec6">
+  <div class="section-head" onclick="toggle('sec6')">
+    <div class="num">6</div>
+    <h2>Zones d'Activité (heatmap) — Slide 6</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="field">
+        <label>Titre</label>
+        <input type="text" name="S6_TITLE" value="ZONES D'ACTIVITÉ">
+      </div>
+      <div class="field">
+        <label>Sous-titre</label>
+        <input type="text" name="S6_SUBTITLE" placeholder="Positionnement moyen · J1–J26">
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="field">
+        <label>🔥 Heatmap principale (plein fond — image insérée telle quelle, sans déformation)</label>
+        <div class="upload-zone" id="zone_heatmap">
+          <input type="file" name="img_heatmap" accept="image/*" onchange="showFile(this,'zone_heatmap')">
+          <div class="ico">🗺</div>
+          <div class="lbl">Heatmap — ratio préservé automatiquement</div>
+          <div class="fname" id="fname_heatmap"></div>
+        </div>
+      </div>
+      <div class="field">
+        <label>Carte d'impact (optionnelle)</label>
+        <div class="upload-zone" id="zone_impact">
+          <input type="file" name="img_map_impact" accept="image/*" onchange="showFile(this,'zone_impact')">
+          <div class="ico">📍</div>
+          <div class="lbl">Carte zones d'impact</div>
+          <div class="fname" id="fname_impact"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 7. Comparaison ── -->
+<div class="section collapsed" id="sec7">
+  <div class="section-head" onclick="toggle('sec7')">
+    <div class="num">7</div>
+    <h2>Comparaison Joueurs — Slide 7</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="field" style="margin-bottom:12px">
+      <label>Titre slide</label>
+      <input type="text" name="S7_TITLE" value="COMPARAISON JOUEURS">
+    </div>
+    <div id="s7_players"></div>
+    <hr class="divider">
+    <div class="sub-title">8 KPI de comparaison</div>
+    <div style="display:grid;grid-template-columns:2fr 80px 80px 80px;gap:4px 8px;margin-bottom:4px">
+      <div class="col-header">KPI</div>
+      <div class="col-header">J1</div>
+      <div class="col-header">J2</div>
+      <div class="col-header">J3</div>
+    </div>
+    <div id="s7_kpis"></div>
+    <div class="field" style="margin-top:8px">
+      <label>Légende</label>
+      <input type="text" name="S7_LEGENDE" placeholder="N = Nathan · /90 min · SportsBase">
+    </div>
+  </div>
+</div>
+
+<!-- ── 8. Progression ── -->
+<div class="section collapsed" id="sec8">
+  <div class="section-head" onclick="toggle('sec8')">
+    <div class="num">8</div>
+    <h2>Axes de Progression — Slide 8</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2" style="margin-bottom:12px">
+      <div class="field">
+        <label>Titre</label>
+        <input type="text" name="S8_TITLE" value="AXES DE PROGRESSION">
+      </div>
+      <div class="field">
+        <label>Sous-titre</label>
+        <input type="text" name="S8_SUBTITLE" value="Plan de développement individuel">
+      </div>
+    </div>
+    <div id="s8_axes"></div>
+    <div class="field" style="margin-top:12px">
+      <label>Image radar slide 8</label>
+      <div class="upload-zone" id="zone_radar8">
+        <input type="file" name="img_radar_s8" accept="image/*" onchange="showFile(this,'zone_radar8')">
+        <div class="ico">📊</div>
+        <div class="lbl">Radar de progression</div>
+        <div class="fname" id="fname_radar8"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── 9. Plan développement ── -->
+<div class="section collapsed" id="sec9">
+  <div class="section-head" onclick="toggle('sec9')">
+    <div class="num">9</div>
+    <h2>Plan de Développement — Slide 9</h2>
+    <span class="chevron">▼</span>
+  </div>
+  <div class="section-body">
+    <div class="grid-2">
+      <div class="field">
+        <label>Valeurs BASE</label>
+        <textarea name="S9_BASE_VALS" placeholder="Tirs cadrés 41% · Centres 28%"></textarea>
+      </div>
+      <div class="field">
+        <label>Valeurs CAP 1</label>
+        <textarea name="S9_CAP1_VALS" placeholder="Tirs cadrés 46% · Centres 32%"></textarea>
+      </div>
+      <div class="field">
+        <label>Valeurs CAP 2</label>
+        <textarea name="S9_CAP2_VALS" placeholder="Tirs cadrés 48% · Centres 34%"></textarea>
+      </div>
+      <div class="field">
+        <label>Valeurs CAP OPTIMAL</label>
+        <textarea name="S9_CAPOPT_VALS" placeholder="Tirs cadrés 50% · Centres 36%"></textarea>
+      </div>
+    </div>
+    <div class="grid-2" style="margin-top:12px">
+      <div class="field">
+        <label>Impact attendu — Buts</label>
+        <input type="text" name="S9_IMPACT_BUTS" placeholder="+2/3 buts">
+      </div>
+      <div class="field">
+        <label>Impact attendu — Passes</label>
+        <input type="text" name="S9_IMPACT_PASSES" placeholder="+ passes décisives">
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Submit ── -->
+<div class="submit-area">
+  <button type="submit" class="btn-generate" id="btnGen">
+    <span id="btnText">⚡ Générer le deck PPTX</span>
+    <div class="spinner" id="spinner"></div>
+  </button>
+  <p class="help" style="margin-top:10px; text-align:center">
+    Le fichier sera téléchargé automatiquement · J4PG Deck Studio
+  </p>
+</div>
+
+</form>
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Toggle sections ──────────────────────────────────────────────────────────
+function toggle(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
+// ── Show filename in upload zone ─────────────────────────────────────────────
+function showFile(input, zoneId) {
+  const el = document.getElementById('fname_' + zoneId.replace('zone_',''));
+  if (input.files && input.files[0]) {
+    el.textContent = '✓ ' + input.files[0].name;
+    document.getElementById(zoneId).style.borderColor = 'var(--green)';
+  }
+}
+
+// ── Build S2 KPI rows ────────────────────────────────────────────────────────
+function buildS2() {
+  const c = document.getElementById('s2_kpis');
+  for (let i = 1; i <= 9; i++) {
+    const valField  = i <= 7 ? `<input type="text" name="S2_KPI${i}_VAL" placeholder="0.00">` : `<input type="text" name="S2_KPI${i}_VAL" placeholder="0%">`;
+    const pctField  = i <= 6 ? `<input type="text" name="S2_KPI${i}_PCTILE" placeholder="${i*10}e">` : '';
+    c.innerHTML += `<div style="display:grid;grid-template-columns:1fr 60px ${i<=6?'80px':''};gap:4px 8px;margin-bottom:6px">
+      <input type="text" name="S2_KPI${i}_LABEL" placeholder="KPI ${i}">
+      ${valField}
+      ${pctField}
+    </div>`;
+  }
+}
+
+// ── Build S3 KPI rows (avec bar) ─────────────────────────────────────────────
+function buildS3() {
+  const c = document.getElementById('s3_kpis');
+  for (let i = 1; i <= 8; i++) {
+    c.innerHTML += `<div style="margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:2fr 80px 80px 80px;gap:4px 8px;">
+        <input type="text" name="S3_KPI${i}_LABEL" placeholder="KPI ${i}">
+        <input type="text" name="s3_kpi_${i}_val"   placeholder="0.00"   oninput="updateBar(${i})">
+        <input type="text" name="s3_kpi_${i}_target" placeholder="0.00" oninput="updateBar(${i})">
+        <input type="text" name="S3_KPI${i}_GAP"  placeholder="-0.00">
+      </div>
+      <div class="bar-preview"><div class="bar-fill" id="bar3_${i}" style="width:0%"></div></div>
+    </div>`;
+  }
+}
+
+function updateBar(i) {
+  const v = parseFloat(document.querySelector(`[name="s3_kpi_${i}_val"]`).value) || 0;
+  const t = parseFloat(document.querySelector(`[name="s3_kpi_${i}_target"]`).value) || 1;
+  const pct = Math.min(v/t*100, 100);
+  const bar = document.getElementById(`bar3_${i}`);
+  if (bar) bar.style.width = pct + '%';
+}
+
+// ── Build S4 Force/Axe blocks ────────────────────────────────────────────────
+function buildS4() {
+  const forces = document.getElementById('s4_forces');
+  const axes   = document.getElementById('s4_axes');
+  for (let i = 1; i <= 3; i++) {
+    forces.innerHTML += `<div class="fa-block">
+      <div class="fa-block-head">Force ${i}</div>
+      <div class="grid-2" style="margin-bottom:8px">
+        <div class="field"><label>Label</label><input type="text" name="S4_F${i}_LABEL" placeholder="Force ${i}"></div>
+        <div class="field"><label>Description courte</label><input type="text" name="S4_F${i}_DESC" placeholder="stat · détail"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Percentile (0-100)</label><input type="number" name="s4_f_${i}_pct" placeholder="75" min="0" max="100"></div>
+        <div class="field"><label>Badge (ex: TOP 25%)</label><input type="text" name="S4_F${i}_BADGE" placeholder="TOP 25%"></div>
+      </div>
+    </div>`;
+    axes.innerHTML += `<div class="fa-block axe">
+      <div class="fa-block-head">Axe d'amélioration ${i}</div>
+      <div class="grid-2" style="margin-bottom:8px">
+        <div class="field"><label>Label</label><input type="text" name="S4_A${i}_LABEL" placeholder="Axe ${i}"></div>
+        <div class="field"><label>Description courte</label><input type="text" name="S4_A${i}_DESC" placeholder="stat · détail"></div>
+      </div>
+      <div class="grid-2">
+        <div class="field"><label>Percentile (0-100)</label><input type="number" name="s4_a_${i}_pct" placeholder="40" min="0" max="100"></div>
+        <div class="field"><label>Badge (ex: TOP 55%)</label><input type="text" name="S4_A${i}_BADGE" placeholder="TOP 55%"></div>
+      </div>
+    </div>`;
+  }
+}
+
+// ── Build S5 KPI rows ────────────────────────────────────────────────────────
+function buildS5() {
+  const c = document.getElementById('s5_kpis');
+  for (let i = 1; i <= 6; i++) {
+    c.innerHTML += `<div style="display:grid;grid-template-columns:2fr 80px 80px 80px;gap:4px 8px;margin-bottom:6px">
+      <input type="text" name="S5_KPI${i}_LABEL" placeholder="KPI ${i}">
+      <input type="text" name="S5_KPI${i}_N" placeholder="0.00">
+      <input type="text" name="S5_KPI${i}_L" placeholder="0.00">
+      <input type="text" name="S5_KPI${i}_PCT" placeholder="50">
+    </div>`;
+  }
+}
+
+// ── Build S7 Players ─────────────────────────────────────────────────────────
+function buildS7() {
+  const c = document.getElementById('s7_players');
+  for (let i = 1; i <= 3; i++) {
+    c.innerHTML += `<div class="grid-4" style="margin-bottom:10px">
+      <div class="field"><label>J${i} — Nom court</label><input type="text" name="J${i}_NOM_COURT" placeholder="Bitumazala"></div>
+      <div class="field"><label>J${i} — Nom complet</label><input type="text" name="J${i}_NOM" placeholder="N. Bitumazala"></div>
+      <div class="field"><label>J${i} — Poste</label><input type="text" name="J${i}_POSTE" placeholder="MOA"></div>
+      <div class="field"><label>J${i} — Minutes</label><input type="text" name="J${i}_MIN" placeholder="1800"></div>
+      ${i>1 ? `<div class="field" style="grid-column:1/5"><label>J${i} — Club</label><input type="text" name="J${i}_CLUB" placeholder="Club"></div>` : ''}
+    </div>`;
+    // Upload photo
+    c.innerHTML += `<div class="field" style="margin-bottom:12px">
+      <label>Photo J${i}</label>
+      <div class="upload-zone" id="zone_photo_j${i}">
+        <input type="file" name="photo_j${i}" accept="image/*" onchange="showFile(this,'zone_photo_j${i}')">
+        <div class="lbl">Photo joueur ${i}</div>
+        <div class="fname" id="fname_zone_photo_j${i}"></div>
+      </div>
+    </div>`;
+  }
+  // KPI rows
+  const kpis = document.getElementById('s7_kpis');
+  for (let i = 1; i <= 8; i++) {
+    kpis.innerHTML += `<div style="display:grid;grid-template-columns:2fr 80px 80px 80px;gap:4px 8px;margin-bottom:6px">
+      <input type="text" name="S7_KPI${i}_LABEL" placeholder="KPI ${i}">
+      <input type="text" name="S7_KPI${i}_J1" placeholder="—">
+      <input type="text" name="S7_KPI${i}_J2" placeholder="—">
+      <input type="text" name="S7_KPI${i}_J3" placeholder="—">
+    </div>`;
+  }
+}
+
+// ── Build S8 Progression axes ────────────────────────────────────────────────
+function buildS8() {
+  const c = document.getElementById('s8_axes');
+  for (let i = 1; i <= 3; i++) {
+    c.innerHTML += `<div class="fa-block" style="border-color:var(--gold);margin-bottom:10px">
+      <div class="fa-block-head">Axe ${i}</div>
+      <div class="grid-3" style="margin-bottom:8px">
+        <div class="field"><label>Titre</label><input type="text" name="S8_P${i}_TITLE" placeholder="AXE ${i} · ..."></div>
+        <div class="field"><label>KPI ciblé</label><input type="text" name="S8_P${i}_KPI" placeholder="Tirs cadrés (%)"></div>
+        <div class="field"><label>Impact attendu</label><input type="text" name="S8_P${i}_IMPACT" placeholder="+2 buts/saison"></div>
+      </div>
+      <div class="grid-3">
+        <div class="field"><label>Aujourd'hui</label><input type="text" name="S8_P${i}_TODAY" placeholder="41%"></div>
+        <div class="field"><label>Cap 1</label><input type="text" name="S8_P${i}_CAP1" placeholder="46%"></div>
+        <div class="field"><label>Cap Optimal</label><input type="text" name="S8_P${i}_CAPOPT" placeholder="50%"></div>
+      </div>
+    </div>`;
+  }
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────────
+buildS2(); buildS3(); buildS4(); buildS5(); buildS7(); buildS8();
+
+// ── Form submit ───────────────────────────────────────────────────────────────
+document.getElementById('deckForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const btn     = document.getElementById('btnGen');
+  const spinner = document.getElementById('spinner');
+  const btnText = document.getElementById('btnText');
+
+  btn.disabled = true;
+  spinner.style.display = 'block';
+  btnText.textContent = 'Génération en cours…';
+
+  try {
+    const fd = new FormData(e.target);
+
+    // Mapper les champs barres S3 (val/target) vers les noms attendus par l'API
+    for (let i = 1; i <= 8; i++) {
+      const v = fd.get(`s3_kpi_${i}_val`);
+      const t = fd.get(`s3_kpi_${i}_target`);
+      if (v) { fd.set(`s3_kpi_${i}_val`, v); }
+      if (t) { fd.set(`s3_kpi_${i}_target`, t); }
+      // Aussi mettre les valeurs texte dans les champs LABEL/VAL
+      fd.set(`S3_KPI${i}_VAL`, v || '');
+      fd.set(`S3_KPI${i}_TARGET`, t || '');
+    }
+
+    // Mapper photos joueurs
+    for (let i = 1; i <= 3; i++) {
+      const photo = fd.get(`photo_j${i}`);
+      if (photo && photo.size > 0) fd.set(`PHOTO_J${i}`, photo);
+    }
+    const mainPhoto = fd.get('photo_player');
+    if (mainPhoto && mainPhoto.size > 0) fd.set('PHOTO_PLAYER', mainPhoto);
+
+    // Radar et heatmap
+    const heatmap = fd.get('img_heatmap');
+    if (heatmap && heatmap.size > 0) fd.set('IMG_HEATMAP', heatmap);
+    const radar5 = fd.get('img_radar_s5');
+    if (radar5 && radar5.size > 0) fd.set('IMG_RADAR_S5', radar5);
+    const radar8 = fd.get('img_radar_s8');
+    if (radar8 && radar8.size > 0) fd.set('IMG_RADAR_S8', radar8);
+    const impact = fd.get('img_map_impact');
+    if (impact && impact.size > 0) fd.set('IMG_MAP_IMPACT', impact);
+
+    // Percentiles S4 forces/axes
+    for (let i = 1; i <= 3; i++) {
+      fd.set(`s4_f_${i}_pct`, fd.get(`s4_f_${i}_pct`) || '0');
+      fd.set(`s4_a_${i}_pct`, fd.get(`s4_a_${i}_pct`) || '0');
+    }
+
+    const res = await fetch('/api/generate', { method: 'POST', body: fd });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || `Erreur ${res.status}`);
+    }
+
+    // Téléchargement auto
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const cd   = res.headers.get('Content-Disposition') || '';
+    const fname = cd.match(/filename="(.+?)"/)?.[1] || 'J4PG_Deck.pptx';
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; a.click();
+    URL.revokeObjectURL(url);
+
+    showToast('✓ Deck généré et téléchargé !', false);
+
+  } catch (err) {
+    showToast('✗ ' + err.message, true);
+    console.error(err);
+  } finally {
+    btn.disabled = false;
+    spinner.style.display = 'none';
+    btnText.textContent = '⚡ Générer le deck PPTX';
+  }
+});
+
+function showToast(msg, isError) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'show' + (isError ? ' error' : '');
+  setTimeout(() => { t.className = ''; }, 4000);
+}
+</script>
+</body>
+</html>
