@@ -1,4 +1,3 @@
-from generate import app
-
-def handler(request):
-    return app(request)
+from generate import handler
+   
+   __all__ = ['handler']
