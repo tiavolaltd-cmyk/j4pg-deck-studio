@@ -14,7 +14,14 @@ import traceback
 
 # Ajouter le repertoire api au path pour importer fill_engine
 sys.path.insert(0, os.path.dirname(__file__))
-from fill_engine import fill_deck
+
+# Test: try importing fill_engine and catch errors
+try:
+    from fill_engine import fill_deck
+    FILL_ENGINE_LOADED = True
+except Exception as import_error:
+    FILL_ENGINE_LOADED = False
+    FILL_ENGINE_ERROR = str(import_error)
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 
@@ -124,22 +131,39 @@ def handler(request):
     Handles GET (health check) and POST (deck generation) requests.
     """
     try:
-        # Health check
+        # Health check - MINIMAL test to verify handler works
         if request.method == 'GET':
+            # Check if fill_engine loaded successfully
+            status = {
+                'status': 'ok',
+                'service': 'J4PG Deck Studio',
+                'fill_engine_loaded': FILL_ENGINE_LOADED
+            }
+            if not FILL_ENGINE_LOADED:
+                status['error'] = f'fill_engine import failed: {FILL_ENGINE_ERROR}'
+
             return {
                 'statusCode': 200,
                 'headers': {
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'
                 },
-                'body': json.dumps({
-                    'status': 'ok',
-                    'service': 'J4PG Deck Studio'
-                })
+                'body': json.dumps(status)
             }
 
         # Handle POST request
         if request.method == 'POST':
+            # Check if fill_engine is available
+            if not FILL_ENGINE_LOADED:
+                return {
+                    'statusCode': 500,
+                    'headers': {'Content-Type': 'application/json'},
+                    'body': json.dumps({
+                        'error': 'fill_engine module not available',
+                        'details': FILL_ENGINE_ERROR
+                    })
+                }
+
             # Get content type and body
             content_type = request.headers.get('content-type', '').lower()
             body = request.body
@@ -177,67 +201,49 @@ def handler(request):
                     data[key.upper()] = val
 
             # Barres slide 3 (val/target pour chaque KPI)
-            s3_vals = parse_bar_vals(fields, "s3_kpi", 8)
+            data['S3_BARS'] = parse_bar_vals(fields, 's3', 8)
 
-            # Barres slide 4 (percentiles forces et axes)
-            s4_force_pcts = parse_percentiles(fields, "s4_f", 3)
-            s4_axe_pcts   = parse_percentiles(fields, "s4_a", 3)
+            # Barres slide 4 (forces et axes d'amélioration)
+            data['S4_FORCES'] = parse_bar_vals(fields, 's4', 5, field_a='force_val', field_b='force_target')
+            data['S4_AXES'] = parse_bar_vals(fields, 's4', 5, field_a='axe_val', field_b='axe_target')
 
-            # FIX: les champs s4_f_1_pct/s4_a_1_pct sont en minuscules dans le form
-            # -> leur cle majuscule serait S4_F_1_PCT, mais le template attend S4_F1_PCT
-            # On injecte les valeurs correctes dans data
-            for i, pct in enumerate(s4_force_pcts, 1):
-                data[f'S4_F{i}_PCT'] = str(int(pct))
-            for i, pct in enumerate(s4_axe_pcts, 1):
-                data[f'S4_A{i}_PCT'] = str(int(pct))
+            # Percentiles slide 5
+            data['S5_PERCENTILES'] = parse_percentiles(fields, 's5', 8)
 
             # Images
             images = {}
-            for form_field, shape_name in IMG_MAP.items():
-                if form_field in files:
-                    images[shape_name] = files[form_field]['content']
+            for field_name, shape_name in IMG_MAP.items():
+                if field_name in files:
+                    file_data = files[field_name]['content']
+                    images[shape_name] = file_data
 
-            # Nom du fichier de sortie
-            nom    = data.get("NOM_UPPER", "joueur").replace(" ", "_")
-            prenom = data.get("PRENOM_UPPER", "").replace(" ", "_")
-            saison = data.get("SAISON", "2024-25").replace("-", "")
-            fmt_label = "TOP12" if deck_format == "top12" else "TOP20"
-            fname  = f"J4PG_{prenom}_{nom}_{fmt_label}_{saison}.pptx"
+            # Generate PPTX
+            with tempfile.NamedTemporaryFile(suffix='.pptx', delete=False) as tmp_file:
+                tmp_path = tmp_file.name
 
-            # Create temporary file for output
-            with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
-                tmp_path = tmp.name
-
-            pptx_bytes = None
             try:
-                fill_deck(
-                    template_path=template_path,
-                    data=data,
-                    images=images,
-                    output_path=tmp_path,
-                    s3_kpi_vals=s3_vals if any(v != (0, 1) for v in s3_vals) else None,
-                    s4_force_pcts=s4_force_pcts if any(p > 0 for p in s4_force_pcts) else None,
-                    s4_axe_pcts=s4_axe_pcts if any(p > 0 for p in s4_axe_pcts) else None,
-                )
-                with open(tmp_path, "rb") as f:
+                fill_deck(template_path, data, images, tmp_path)
+
+                # Read and encode the generated PPTX
+                with open(tmp_path, 'rb') as f:
                     pptx_bytes = f.read()
+
+                pptx_b64 = base64.b64encode(pptx_bytes).decode('utf-8')
+
+                return {
+                    'statusCode': 200,
+                    'headers': {
+                        'Content-Type': 'application/octet-stream',
+                        'Content-Disposition': 'attachment; filename="deck.pptx"',
+                        'Access-Control-Allow-Origin': '*'
+                    },
+                    'body': pptx_b64,
+                    'isBase64Encoded': True
+                }
             finally:
+                # Cleanup
                 if os.path.exists(tmp_path):
                     os.unlink(tmp_path)
-
-            # Encode to base64
-            pptx_b64 = base64.b64encode(pptx_bytes).decode('utf-8')
-
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-                    'Content-Disposition': f'attachment; filename="{fname}"',
-                    'Access-Control-Allow-Origin': '*'
-                },
-                'body': pptx_b64,
-                'isBase64Encoded': True
-            }
 
         # Unsupported method
         return {
@@ -247,7 +253,7 @@ def handler(request):
         }
 
     except Exception as e:
-        # Error handling
+        # Error handling - return detailed error info
         tb = traceback.format_exc()
         return {
             'statusCode': 500,
