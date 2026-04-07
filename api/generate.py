@@ -15,13 +15,8 @@ import traceback
 # Ajouter le repertoire api au path pour importer fill_engine
 sys.path.insert(0, os.path.dirname(__file__))
 
-# Test: try importing fill_engine and catch errors
-try:
-    from fill_engine import fill_deck
-    FILL_ENGINE_LOADED = True
-except Exception as import_error:
-    FILL_ENGINE_LOADED = False
-    FILL_ENGINE_ERROR = str(import_error)
+# DON'T import fill_engine at module level - defer to handler execution
+# This allows us to catch import errors properly
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 
@@ -131,16 +126,27 @@ def handler(request):
     Handles GET (health check) and POST (deck generation) requests.
     """
     try:
-        # Health check - MINIMAL test to verify handler works
+        # Health check - test system state
         if request.method == 'GET':
-            # Check if fill_engine loaded successfully
             status = {
                 'status': 'ok',
                 'service': 'J4PG Deck Studio',
-                'fill_engine_loaded': FILL_ENGINE_LOADED
+                'templates_dir': TEMPLATE_DIR,
+                'template_top20_exists': os.path.exists(TEMPLATES['top20']),
+                'template_top12_exists': os.path.exists(TEMPLATES['top12']),
+                'python_version': sys.version,
+                'sys_path': sys.path[:3]  # First 3 paths for debugging
             }
-            if not FILL_ENGINE_LOADED:
-                status['error'] = f'fill_engine import failed: {FILL_ENGINE_ERROR}'
+
+            # Try importing fill_engine in handler context
+            try:
+                from fill_engine import fill_deck
+                status['fill_engine_status'] = 'loaded_ok'
+                status['fill_deck_callable'] = callable(fill_deck)
+            except Exception as import_err:
+                status['fill_engine_status'] = 'import_failed'
+                status['fill_engine_error'] = str(import_err)
+                status['fill_engine_error_type'] = type(import_err).__name__
 
             return {
                 'statusCode': 200,
@@ -148,21 +154,13 @@ def handler(request):
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'
                 },
-                'body': json.dumps(status)
+                'body': json.dumps(status, indent=2)
             }
 
         # Handle POST request
         if request.method == 'POST':
-            # Check if fill_engine is available
-            if not FILL_ENGINE_LOADED:
-                return {
-                    'statusCode': 500,
-                    'headers': {'Content-Type': 'application/json'},
-                    'body': json.dumps({
-                        'error': 'fill_engine module not available',
-                        'details': FILL_ENGINE_ERROR
-                    })
-                }
+            # Import fill_engine here, inside the handler
+            from fill_engine import fill_deck
 
             # Get content type and body
             content_type = request.headers.get('content-type', '').lower()
@@ -261,6 +259,7 @@ def handler(request):
             'body': json.dumps({
                 'error': 'Internal server error',
                 'message': str(e),
+                'error_type': type(e).__name__,
                 'trace': tb
-            })
+            }, indent=2)
         }
