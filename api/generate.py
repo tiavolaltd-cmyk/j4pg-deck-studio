@@ -1,17 +1,18 @@
 """
-J4PG Deck Studio - API Vercel
+J4PG Deck Studio - API Flask pour Vercel
 POST /api/generate
-Recoit : multipart/form-data avec champs texte + fichiers images
-Retourne : fichier PPTX en telechargement
+Reçoit : multipart/form-data avec champs texte + fichiers images
+Retourne : fichier PPTX en téléchargement
 """
 
 import json, os, sys, io, tempfile, traceback
-from http.server import BaseHTTPRequestHandler
-import cgi
+from flask import Flask, request, send_file, jsonify
 
-# Ajouter le repertoire api au path pour importer fill_engine
+# Ajouter le répertoire api au path pour importer fill_engine
 sys.path.insert(0, os.path.dirname(__file__))
 from fill_engine import fill_deck
+
+app = Flask(__name__)
 
 TEMPLATE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates")
 
@@ -20,7 +21,6 @@ TEMPLATES = {
     "top12": os.path.join(TEMPLATE_DIR, "master_top12.pptx"),
 }
 
-# Mapping champ_form -> nom_shape_pptx
 IMG_MAP = {
     "photo_player":   "PHOTO_PLAYER",
     "img_heatmap":    "IMG_HEATMAP",
@@ -32,144 +32,101 @@ IMG_MAP = {
     "photo_j3":       "PHOTO_J3",
 }
 
-
 def parse_bar_vals(form, prefix, n, field_a="val", field_b="target"):
-    """Extrait n tuples (val, target) depuis les champs de formulaire."""
     result = []
     for i in range(1, n + 1):
-        a = form.getvalue(f"{prefix}_{i}_{field_a}", "0") or "0"
-        b = form.getvalue(f"{prefix}_{i}_{field_b}", "1") or "1"
+        a = form.get(f"{prefix}_{i}_{field_a}", "0") or "0"
+        b = form.get(f"{prefix}_{i}_{field_b}", "1") or "1"
         try:
             result.append((float(a), float(b)))
         except ValueError:
             result.append((0.0, 1.0))
     return result
 
-
 def parse_percentiles(form, prefix, n):
-    """Extrait n percentiles depuis le formulaire."""
     result = []
     for i in range(1, n + 1):
-        v = form.getvalue(f"{prefix}_{i}_pct", "0") or "0"
+        v = form.get(f"{prefix}_{i}_pct", "0") or "0"
         try:
             result.append(float(v))
         except ValueError:
             result.append(0.0)
     return result
 
-
-def parse_image(form, field_name):
-    """Retourne bytes de l'image ou None."""
-    item = form[field_name] if field_name in form else None
-    if item and hasattr(item, 'file') and item.file:
-        data = item.file.read()
-        return data if data else None
+def parse_image(files, field_name):
+    if field_name not in files:
+        return None
+    file = files[field_name]
+    if file and file.filename:
+        return file.read()
     return None
 
+@app.route('/api/generate', methods=['GET', 'POST'])
+def generate():
+    if request.method == "GET":
+        return jsonify({"status": "ok", "service": "J4PG Deck Studio"}), 200
+    
+    try:
+        deck_format = request.form.get("deck_format", "top20")
+        template_path = TEMPLATES.get(deck_format, TEMPLATES["top20"])
 
-class handler(BaseHTTPRequestHandler):
+        data = {}
+        for key in request.form.keys():
+            val = request.form.get(key)
+            if val and isinstance(val, str):
+                data[key.upper()] = val
 
-    def do_GET(self):
-        """Health check."""
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.end_headers()
-        self.wfile.write(json.dumps({"status": "ok", "service": "J4PG Deck Studio"}).encode())
+        s3_vals = parse_bar_vals(request.form, "s3_kpi", 8)
+        s4_force_pcts = parse_percentiles(request.form, "s4_f", 3)
+        s4_axe_pcts = parse_percentiles(request.form, "s4_a", 3)
 
-    def do_POST(self):
+        for i, pct in enumerate(s4_force_pcts, 1):
+            data[f'S4_F{i}_PCT'] = str(int(pct))
+        for i, pct in enumerate(s4_axe_pcts, 1):
+            data[f'S4_A{i}_PCT'] = str(int(pct))
+
+        images = {}
+        for form_field, shape_name in IMG_MAP.items():
+            img = parse_image(request.files, form_field)
+            if img:
+                images[shape_name] = img
+
+        nom = data.get("NOM_UPPER", "joueur").replace(" ", "_")
+        prenom = data.get("PRENOM_UPPER", "").replace(" ", "_")
+        saison = data.get("SAISON", "2024-25").replace("-", "")
+        fmt_label = "TOP12" if deck_format == "top12" else "TOP20"
+        fname = f"J4PG_{prenom}_{nom}_{fmt_label}_{saison}.pptx"
+
+        with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
+            tmp_path = tmp.name
+
         try:
-            content_type = self.headers.get("Content-Type", "")
-            content_length = int(self.headers.get("Content-Length", 0))
-
-            # Parse multipart form
-            environ = {
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-                "CONTENT_LENGTH": str(content_length),
-            }
-            form = cgi.FieldStorage(
-                fp=self.rfile,
-                headers=self.headers,
-                environ=environ
+            fill_deck(
+                template_path=template_path,
+                data=data,
+                images=images,
+                output_path=tmp_path,
+                s3_kpi_vals=s3_vals if any(v != (0, 1) for v in s3_vals) else None,
+                s4_force_pcts=s4_force_pcts if any(p > 0 for p in s4_force_pcts) else None,
+                s4_axe_pcts=s4_axe_pcts if any(p > 0 for p in s4_axe_pcts) else None,
             )
-
-            # Format de deck
-            deck_format = form.getvalue("deck_format", "top20")
-            template_path = TEMPLATES.get(deck_format, TEMPLATES["top20"])
-
-            # Donnees texte - tous les champs string -> DATA dict (cles majuscules)
-            data = {}
-            for key in form.keys():
-                val = form.getvalue(key)
-                if val and isinstance(val, str):
-                    data[key.upper()] = val
-
-            # Barres slide 3 (val/target pour chaque KPI)
-            s3_vals = parse_bar_vals(form, "s3_kpi", 8)
-
-            # Barres slide 4 (percentiles forces et axes)
-            s4_force_pcts = parse_percentiles(form, "s4_f", 3)
-            s4_axe_pcts   = parse_percentiles(form, "s4_a", 3)
-
-            # FIX: les champs s4_f_1_pct/s4_a_1_pct sont en minuscules dans le form
-            # -> leur cle majuscule serait S4_F_1_PCT, mais le template attend S4_F1_PCT
-            # On injecte les valeurs correctes dans data
-            for i, pct in enumerate(s4_force_pcts, 1):
-                data[f'S4_F{i}_PCT'] = str(int(pct))
-            for i, pct in enumerate(s4_axe_pcts, 1):
-                data[f'S4_A{i}_PCT'] = str(int(pct))
-
-            # Images
-            images = {}
-            for form_field, shape_name in IMG_MAP.items():
-                img = parse_image(form, form_field)
-                if img:
-                    images[shape_name] = img
-
-            # Nom du fichier de sortie
-            nom    = data.get("NOM_UPPER", "joueur").replace(" ", "_")
-            prenom = data.get("PRENOM_UPPER", "").replace(" ", "_")
-            saison = data.get("SAISON", "2024-25").replace("-", "")
-            fmt_label = "TOP12" if deck_format == "top12" else "TOP20"
-            fname  = f"J4PG_{prenom}_{nom}_{fmt_label}_{saison}.pptx"
-
-            with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as tmp:
-                tmp_path = tmp.name
-
-            pptx_bytes = None
-            try:
-                fill_deck(
-                    template_path=template_path,
-                    data=data,
-                    images=images,
-                    output_path=tmp_path,
-                    s3_kpi_vals=s3_vals if any(v != (0, 1) for v in s3_vals) else None,
-                    s4_force_pcts=s4_force_pcts if any(p > 0 for p in s4_force_pcts) else None,
-                    s4_axe_pcts=s4_axe_pcts if any(p > 0 for p in s4_axe_pcts) else None,
-                )
-                with open(tmp_path, "rb") as f:
-                    pptx_bytes = f.read()
-            finally:
-                if os.path.exists(tmp_path):
-                    os.unlink(tmp_path)
-
-            # Reponse PPTX
-            self.send_response(200)
-            self.send_header(
-                "Content-Type",
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            
+            with open(tmp_path, "rb") as f:
+                pptx_bytes = f.read()
+            
+            return send_file(
+                io.BytesIO(pptx_bytes),
+                mimetype='application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                as_attachment=True,
+                download_name=fname
             )
-            self.send_header("Content-Disposition", f'attachment; filename="{fname}"')
-            self.send_header("Content-Length", str(len(pptx_bytes)))
-            self.end_headers()
-            self.wfile.write(pptx_bytes)
+        finally:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
 
-        except Exception as e:
-            tb = traceback.format_exc()
-            self.send_response(500)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(json.dumps({"error": str(e), "trace": tb}).encode())
+    except Exception as e:
+        tb = traceback.format_exc()
+        return jsonify({"error": str(e), "trace": tb}), 500
 
-    def log_message(self, fmt, *args):
-        pass
+if __name__ == '__main__':
+    app.run(debug=False)
