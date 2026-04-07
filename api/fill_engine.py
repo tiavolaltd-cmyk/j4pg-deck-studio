@@ -118,12 +118,40 @@ def _get_image_bytes(img_src) -> bytes:
         return f.read()
 
 
+def _has_blip_fill(shape) -> bool:
+    """Retourne True si le shape utilise une image comme fill (blipFill)."""
+    for elem in shape._element.iter():
+        if 'blipFill' in elem.tag:
+            return True
+    return False
+
+
+def _replace_blip_fill(slide, shape, img_bytes: bytes) -> bool:
+    """
+    Remplace l'image dans un shape blipFill (ex: PHOTO_PLAYER = Freeform masque).
+    Met a jour l'attribut r:embed pour pointer vers la nouvelle image.
+    """
+    NS_R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
+    REL_TYPE = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/image'
+    img_io = io.BytesIO(img_bytes)
+    image_part = slide.part.package.get_or_add_image_part(img_io)
+    new_rId = slide.part.relate_to(image_part, REL_TYPE)
+    embed_attr = f'{{{NS_R}}}embed'
+    for elem in shape._element.iter():
+        if elem.get(embed_attr) is not None:
+            elem.set(embed_attr, new_rId)
+            return True
+    return False
+
+
 def _insert_image_at_shape(slide, shape_name: str, img_bytes: bytes,
                             keep_aspect: bool = False) -> bool:
     """
-    Remplace le shape nommé `shape_name` par une image.
-    Si keep_aspect=True : l'image est centrée dans le shape sans déformation.
-    Retourne True si le shape a été trouvé.
+    Remplace le shape nomme `shape_name` par une image.
+    Cas 1 : shape blipFill (ex: PHOTO_PLAYER) -> swap r:embed, conserve la forme.
+    Cas 2 : shape Picture ou rectangle -> suppression + ajout Picture classique.
+    Si keep_aspect=True : l'image est centree dans le shape sans deformation.
+    Retourne True si le shape a ete trouve.
     """
     from pptx.util import Inches
     from pptx.oxml.ns import qn
@@ -136,6 +164,10 @@ def _insert_image_at_shape(slide, shape_name: str, img_bytes: bytes,
             break
     if target is None:
         return False
+
+    # Cas 1 : shape avec blipFill (Freeform masque comme PHOTO_PLAYER)
+    if _has_blip_fill(target):
+        return _replace_blip_fill(slide, target, img_bytes)
 
     left, top, width, height = target.left, target.top, target.width, target.height
 
