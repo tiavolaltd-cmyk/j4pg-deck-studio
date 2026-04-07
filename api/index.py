@@ -1,11 +1,12 @@
 import sys
 import os
 
-# Add api directory to path
 sys.path.insert(0, os.path.dirname(__file__))
 
-# Import and expose the handler
-from generate import handler as _handler
+# Import the actual handler function
+from generate import handler as generate_handler
 
-# Explicitly define handler at module level for Vercel to find it
-handler = _handler
+# Explicitly define handler at module level
+# This ensures Vercel can find it when it scans the file
+def handler(request):
+    return generate_handler(request)
